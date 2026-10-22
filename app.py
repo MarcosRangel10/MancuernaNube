@@ -10,17 +10,17 @@ import mysql.connector
 app = Flask(__name__)
 
 # =====================================================
-# CONFIGURACIÓN MQTT - HIVE MQ CLOUD
+# CONFIGURACIÓN MQTT - HIVEMQ CLOUD (ENV VARIABLES)
 # =====================================================
-MQTT_BROKER = "d3befa5909cf4595a75259012d836398.s1.eu.hivemq.cloud"
-MQTT_PORT = 8883
+MQTT_BROKER = os.getenv("MQTT_BROKER", "d3befa5909cf4595a75259012d836398.s1.eu.hivemq.cloud")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "8883"))
 MQTT_TOPIC = "mancuerna/+/datos"
 
 MQTT_USER = os.getenv("MQTT_USER", "mancuerna_esp32")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "12345678")
 
 # =====================================================
-# CONFIGURACIÓN MYSQL LOCAL
+# CONFIGURACIÓN MYSQL (AIVEN CLOUD / LOCAL)
 # =====================================================
 DB_HOST = os.getenv("MYSQLHOST", "localhost")
 DB_PORT = int(os.getenv("MYSQLPORT", "3306"))
@@ -36,7 +36,7 @@ rutina_config = {
     "repeticiones_objetivo": 10,
     "tiempo_subida_ideal": 1.0,
     "tiempo_bajada_ideal": 2.0,
-    "activa": False  # Estricto: No cuenta nada si no se presiona INICIAR
+    "activa": False
 }
 
 calibracion = {
@@ -68,24 +68,46 @@ estado_mancuerna = {
     "resumen": None
 }
 
-# Control interno de la máquina de estados de movimiento
+# Control interno biomecánico y heartbeat
 fase_movimiento = "ESPERA"
 t_inicio_subida = 0.0
 t_fin_subida = 0.0
 ultimo_guardado_db = 0.0
+ultima_recepcion_mqtt = 0.0  # Timestamp para detectar desconexión física
 
 def conectar_mysql():
+    """Conexión compatible con Aiven SSL y MySQL Local"""
     try:
-        return mysql.connector.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            database=DB_NAME
-        )
+        config = {
+            "host": DB_HOST,
+            "port": DB_PORT,
+            "user": DB_USER,
+            "password": DB_PASSWORD,
+            "database": DB_NAME,
+            "connect_timeout": 5
+        }
+        if DB_HOST != "localhost" and DB_HOST != "127.0.0.1":
+            config["ssl_disabled"] = False
+            
+        return mysql.connector.connect(**config)
     except Exception as err:
-        print("Error MySQL:", err)
+        print(">>> Error Conexión MySQL Cloud:", err)
         return None
+
+# =====================================================
+# WATCHDOG DE CONEXIÓN (VERIFICA SI SE DESCONECTA)
+# =====================================================
+def verificar_conexion_esp32():
+    """Monitor en segundo plano que marca desconectado si no hay datos en 4s"""
+    global estado_mancuerna, ultima_recepcion_mqtt
+    while True:
+        time.sleep(1)
+        if estado_mancuerna["conectado"]:
+            if time.time() - ultima_recepcion_mqtt > 4.0:
+                estado_mancuerna["conectado"] = False
+                print(">>> ALERTA: ESP32 Desconectado (Sin señal por más de 4s)")
+
+threading.Thread(target=verificar_conexion_esp32, daemon=True).start()
 
 # =====================================================
 # PROCESAMIENTO BIOMECÁNICO DE ALTA PRECISIÓN
@@ -108,60 +130,46 @@ def procesar_lectura_mancuerna(payload):
     d["aceleracion"] = aceleracion
     d["velocidad_angular"] = velocidad_angular
 
-    # Si la rutina no está activa desde el Dashboard, no procesar el conteo
     if not rutina_config["activa"]:
         d["estado"] = "ESPERA"
         fase_movimiento = "ESPERA"
         return
 
-    # Definición de rangos según la calibración
     ang_min = calibracion["angulo_inicio"] if calibracion["inicio_calibrado"] else 25.0
     ang_max = calibracion["angulo_final"] if calibracion["final_calibrado"] else 80.0
     
     rango_total = abs(ang_max - ang_min)
     if rango_total < 20.0:
-        rango_total = 50.0  # Rango de seguridad mínimo
+        rango_total = 50.0
 
-    # Umbrales dinámicos
     umbral_inicio = min(ang_min, ang_max) + (rango_total * 0.25)
     umbral_top = min(ang_min, ang_max) + (rango_total * 0.70)
 
-    # ----------------------------------------------------
-    # MÁQUINA DE ESTADOS PRECISA
-    # ----------------------------------------------------
     if fase_movimiento == "ESPERA":
-        # Iniciar cronómetro inmediatamente al despegar con velocidad positiva
         if angulo >= umbral_inicio and (movimiento or velocidad_angular > 5.0):
             fase_movimiento = "SUBIENDO"
             t_inicio_subida = ahora
 
     elif fase_movimiento == "SUBIENDO":
-        # Congelar tiempo en la cresta de la flexión
         if angulo >= umbral_top:
             fase_movimiento = "ARRIBA"
             t_fin_subida = ahora
-
-        # Reset por intento fallido/incompleto si pasan más de 4.0s
         elif (ahora - t_inicio_subida) > 4.0:
             fase_movimiento = "ESPERA"
 
     elif fase_movimiento == "ARRIBA":
-        # Detección del retorno
         if angulo <= umbral_top - 5.0:
             fase_movimiento = "BAJANDO"
 
     elif fase_movimiento == "BAJANDO":
-        # Retorno completo a la posición inicial
         if angulo <= umbral_inicio:
             t_fin_bajada = ahora
             
-            # Tiempos netos sin arrastrar milisegundos muertos
             dur_subida = round(max(0.3, t_fin_subida - t_inicio_subida), 2)
             dur_bajada = round(max(0.3, t_fin_bajada - t_fin_subida), 2)
             
             t_sub_ideal = rutina_config["tiempo_subida_ideal"]
 
-            # Clasificación calibrada con tolerancias reales
             if dur_subida < (t_sub_ideal * 0.60):
                 tipo_evt = "RAPIDA"
                 d["rapidas"] += 1
@@ -176,7 +184,6 @@ def procesar_lectura_mancuerna(payload):
             d["subida"] = dur_subida
             d["bajada"] = dur_bajada
 
-            # Objeto exacto que renderiza la tarjeta del Frontend
             estado_mancuerna["evento"] = {
                 "tipo": tipo_evt,
                 "repeticion": d["repeticiones"],
@@ -186,7 +193,6 @@ def procesar_lectura_mancuerna(payload):
 
             print(f">>> REPETICIÓN {d['repeticiones']}: {tipo_evt} | Subida: {dur_subida}s | Bajada: {dur_bajada}s")
 
-            # Finalizar al llegar a la meta
             if d["repeticiones"] >= rutina_config["repeticiones_objetivo"]:
                 finalizar_y_resetear_rutina()
 
@@ -210,7 +216,6 @@ def finalizar_y_resetear_rutina():
         }
         estado_mancuerna["resumen"] = resumen
 
-        # Insertar sesión terminada en MySQL
         conn = conectar_mysql()
         if conn:
             try:
@@ -231,11 +236,10 @@ def finalizar_y_resetear_rutina():
                 conn.commit()
                 cursor.close()
                 conn.close()
-                print(">>> ÉXITO: Rutina registrada en el historial de MySQL")
+                print(">>> ÉXITO: Rutina registrada en la base de datos Nube")
             except Exception as e:
-                print("Error al guardar rutina:", e)
+                print(">>> Error al guardar rutina en MySQL:", e)
 
-    # Bloquear y limpiar estado
     rutina_config["activa"] = False
     fase_movimiento = "ESPERA"
 
@@ -248,16 +252,20 @@ def al_conectar(client, userdata, flags, rc):
         print("   MANCUERNA IoT CONECTADO A HIVEMQ")
         print("========================================")
         client.subscribe(MQTT_TOPIC)
+    else:
+        print(f">>> Error conexión MQTT. Código: {rc}")
 
 def al_recibir(client, userdata, msg):
-    global estado_mancuerna, ultimo_guardado_db
+    global estado_mancuerna, ultimo_guardado_db, ultima_recepcion_mqtt
     try:
         payload = json.loads(msg.payload.decode())
+        
+        # Actualización de presencia activa
         estado_mancuerna["conectado"] = True
+        ultima_recepcion_mqtt = time.time()
         
         procesar_lectura_mancuerna(payload)
 
-        # Muestreo continuo a la tabla datos_mancuerna solo durante la rutina
         ahora = time.time()
         if rutina_config["activa"] and (ahora - ultimo_guardado_db >= 1.0):
             conn = conectar_mysql()
@@ -282,20 +290,22 @@ def al_recibir(client, userdata, msg):
                     pass
                 ultimo_guardado_db = ahora
     except Exception as e:
-        print("Error en MQTT:", e)
+        print("Error al procesar MQTT:", e)
 
 def iniciar_mqtt():
-    client = mqtt.Client()
+    client = mqtt.Client(client_id=f"RenderFlask_{int(time.time())}")
     client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
     client.tls_set(cert_reqs=ssl.CERT_REQUIRED)
     client.on_connect = al_conectar
     client.on_message = al_recibir
+    
     while True:
         try:
             client.connect(MQTT_BROKER, MQTT_PORT, 60)
             client.loop_forever()
         except Exception as e:
-            time.sleep(3)
+            print(">>> Reintentando conexión MQTT en 5s:", e)
+            time.sleep(5)
 
 threading.Thread(target=iniciar_mqtt, daemon=True).start()
 
@@ -395,9 +405,9 @@ def api_historial():
         conn.close()
         return jsonify(filas)
     except Exception as e:
-        print("Error al consultar historial:", e)
+        print(">>> Error al consultar historial:", e)
         return jsonify([])
 
 if __name__ == '__main__':
-    print("Servidor corriendo en http://127.0.0.1:5000")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)

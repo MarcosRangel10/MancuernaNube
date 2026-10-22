@@ -1,0 +1,2641 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Mancuerna IoT | Smart Training</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        app: {
+                            bg: '#070b12',
+                            panel: '#0d131f',
+                            panel2: '#111827',
+                            blue: '#3b82f6',
+                            cyan: '#06b6d4',
+                            green: '#10b981',
+                            purple: '#8b5cf6',
+                            orange: '#f59e0b',
+                            red: '#ef4444'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background:
+                radial-gradient(circle at 15% 10%, rgba(59,130,246,.10), transparent 30%),
+                radial-gradient(circle at 85% 20%, rgba(6,182,212,.08), transparent 30%),
+                #070b12;
+            color: #e5e7eb;
+        }
+
+        .glass {
+            background: rgba(13, 19, 31, .82);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border: 1px solid rgba(148,163,184,.10);
+            box-shadow:
+                0 15px 40px rgba(0,0,0,.20),
+                inset 0 1px 0 rgba(255,255,255,.025);
+        }
+
+        .glass-hover {
+            transition: all .25s ease;
+        }
+
+        .glass-hover:hover {
+            transform: translateY(-2px);
+            border-color: rgba(59,130,246,.25);
+            box-shadow:
+                0 18px 45px rgba(0,0,0,.28),
+                0 0 30px rgba(59,130,246,.06);
+        }
+
+        .metric-value {
+            letter-spacing: -0.04em;
+        }
+
+        .gradient-text {
+            background: linear-gradient(90deg,#60a5fa,#22d3ee);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .btn {
+            transition: all .2s ease;
+        }
+
+        .btn:active {
+            transform: scale(.97);
+        }
+
+        .btn:disabled {
+            opacity: .45;
+            cursor: not-allowed;
+        }
+
+        .status-online {
+            color: #34d399;
+        }
+
+        .status-offline {
+            color: #f87171;
+        }
+
+        .pulse-online {
+            animation: pulseOnline 1.8s infinite;
+        }
+
+        @keyframes pulseOnline {
+            0%,100% {
+                box-shadow: 0 0 0 0 rgba(16,185,129,.35);
+            }
+            50% {
+                box-shadow: 0 0 0 8px rgba(16,185,129,0);
+            }
+        }
+
+        .progress-bar {
+            transition: width .35s ease;
+        }
+
+        .state-badge {
+            transition: all .25s ease;
+        }
+
+        .modal {
+            animation: modalIn .25s ease;
+        }
+
+        @keyframes modalIn {
+            from {
+                opacity: 0;
+                transform: translateY(15px) scale(.97);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .nav-active {
+            background: rgba(59,130,246,.12);
+            color: #60a5fa;
+            border-color: rgba(59,130,246,.18);
+        }
+
+        @media(max-width: 640px) {
+            body {
+                font-size: 14px;
+            }
+
+            .mobile-scroll {
+                overflow-x: auto;
+            }
+
+            .mobile-scroll::-webkit-scrollbar {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body class="min-h-screen">
+
+<div class="max-w-[1500px] mx-auto px-3 sm:px-5 lg:px-8 py-4 lg:py-6">
+
+    <!-- =========================================================
+         HEADER
+    ========================================================== -->
+    <header class="glass rounded-3xl px-4 sm:px-6 py-4 mb-5">
+
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+
+            <div class="flex items-center gap-3">
+
+                <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl
+                            bg-gradient-to-br from-blue-500/20 to-cyan-400/10
+                            border border-blue-400/20
+                            flex items-center justify-center">
+
+                    <svg class="w-7 h-7 sm:w-8 sm:h-8 text-cyan-400"
+                         fill="none"
+                         stroke="currentColor"
+                         viewBox="0 0 24 24">
+
+                        <path stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="1.8"
+                              d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                </div>
+
+                <div>
+                    <h1 class="text-xl sm:text-2xl font-extrabold gradient-text">
+                        Mancuerna IoT
+                    </h1>
+
+                    <p class="text-[11px] sm:text-xs text-slate-500">
+                        Sistema inteligente de monitoreo biomecánico
+                    </p>
+                </div>
+
+            </div>
+
+
+            <!-- DEVICE STATUS -->
+
+            <div class="flex items-center justify-between lg:justify-end gap-3">
+
+                <div class="text-right hidden sm:block">
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500">
+                        Dispositivo
+                    </p>
+
+                    <p id="deviceName"
+                       class="text-sm font-semibold text-slate-200">
+                        Mancuerna01
+                    </p>
+                </div>
+
+                <div id="connectionBadge"
+                     class="flex items-center gap-2 px-4 py-2.5
+                            rounded-full border border-red-500/20
+                            bg-red-500/5">
+
+                    <span id="connectionDot"
+                          class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+
+                    <span id="connectionText"
+                          class="text-xs font-bold text-red-400">
+                        DESCONECTADO
+                    </span>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </header>
+
+
+    <!-- =========================================================
+         NAVIGATION
+    ========================================================== -->
+
+    <div class="glass rounded-2xl p-1.5 mb-5">
+
+        <div class="grid grid-cols-3 gap-1">
+
+            <button onclick="mostrarSeccion('entrenamiento')"
+                    id="navEntrenamiento"
+                    class="nav-active rounded-xl py-3 text-xs sm:text-sm font-semibold border border-transparent">
+
+                <span class="hidden sm:inline">🏋️ </span>
+                Entrenamiento
+
+            </button>
+
+            <button onclick="mostrarSeccion('historial')"
+                    id="navHistorial"
+                    class="rounded-xl py-3 text-xs sm:text-sm font-semibold text-slate-500 border border-transparent">
+
+                <span class="hidden sm:inline">📊 </span>
+                Historial
+
+            </button>
+
+            <button onclick="mostrarSeccion('dispositivo')"
+                    id="navDispositivo"
+                    class="rounded-xl py-3 text-xs sm:text-sm font-semibold text-slate-500 border border-transparent">
+
+                <span class="hidden sm:inline">⚙️ </span>
+                Dispositivo
+
+            </button>
+
+        </div>
+
+    </div>
+
+
+    <!-- =========================================================
+         SECCIÓN ENTRENAMIENTO
+    ========================================================== -->
+
+    <section id="seccionEntrenamiento">
+
+        <!-- STATUS PRINCIPAL -->
+
+        <div class="glass rounded-3xl p-4 sm:p-6 mb-5">
+
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+
+                <div>
+
+                    <p class="text-[10px] uppercase tracking-[.18em] text-slate-500 mb-1">
+                        Sesión actual
+                    </p>
+
+                    <div class="flex flex-wrap items-center gap-2">
+
+                        <h2 id="currentExercise"
+                            class="text-xl sm:text-2xl font-extrabold text-white">
+                            Sin ejercicio
+                        </h2>
+
+                        <span id="stateBadge"
+                              class="state-badge px-3 py-1 rounded-full
+                                     bg-slate-800 text-slate-400
+                                     text-[10px] font-bold uppercase">
+                            ESPERA
+                        </span>
+
+                    </div>
+
+                </div>
+
+                <div class="text-left md:text-right">
+
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500">
+                        Progreso
+                    </p>
+
+                    <p id="progressText"
+                       class="text-lg font-bold text-blue-400">
+                        0%
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <!-- PROGRESS -->
+
+            <div class="mt-5">
+
+                <div class="h-2 rounded-full bg-slate-800 overflow-hidden">
+
+                    <div id="progressBar"
+                         class="progress-bar h-full w-0 rounded-full
+                                bg-gradient-to-r from-blue-500 to-cyan-400">
+                    </div>
+
+                </div>
+
+                <div class="flex justify-between mt-2 text-[10px] text-slate-500">
+
+                    <span id="progressCurrent">
+                        0 repeticiones
+                    </span>
+
+                    <span id="progressTarget">
+                        Meta: 0
+                    </span>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- =====================================================
+             METRICS
+        ====================================================== -->
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
+
+            <!-- REPS -->
+
+            <div class="glass glass-hover rounded-2xl p-4">
+
+                <div class="flex justify-between items-start">
+
+                    <div>
+                        <p class="text-[10px] uppercase tracking-wider text-slate-500">
+                            Repeticiones
+                        </p>
+
+                        <p id="metricReps"
+                           class="metric-value text-3xl sm:text-4xl font-extrabold text-blue-400 mt-2">
+                            0
+                        </p>
+                    </div>
+
+                    <div class="w-9 h-9 rounded-xl bg-blue-500/10
+                                flex items-center justify-center text-blue-400">
+                        ↻
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- ANGLE -->
+
+            <div class="glass glass-hover rounded-2xl p-4">
+
+                <div class="flex justify-between items-start">
+
+                    <div>
+                        <p class="text-[10px] uppercase tracking-wider text-slate-500">
+                            Ángulo
+                        </p>
+
+                        <p id="metricAngle"
+                           class="metric-value text-3xl sm:text-4xl font-extrabold text-purple-400 mt-2">
+                            0°
+                        </p>
+                    </div>
+
+                    <div class="w-9 h-9 rounded-xl bg-purple-500/10
+                                flex items-center justify-center text-purple-400">
+                        ∠
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- VELOCIDAD -->
+
+            <div class="glass glass-hover rounded-2xl p-4">
+
+                <div class="flex justify-between items-start">
+
+                    <div>
+                        <p class="text-[10px] uppercase tracking-wider text-slate-500">
+                            Velocidad angular
+                        </p>
+
+                        <p id="metricVelocity"
+                           class="metric-value text-3xl sm:text-4xl font-extrabold text-cyan-400 mt-2">
+                            0.00
+                        </p>
+
+                        <p class="text-[9px] text-slate-600 mt-1">
+                            °/s
+                        </p>
+
+                    </div>
+
+                    <div class="w-9 h-9 rounded-xl bg-cyan-500/10
+                                flex items-center justify-center text-cyan-400">
+                        ⚡
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- ACCELERATION -->
+
+            <div class="glass glass-hover rounded-2xl p-4">
+
+                <div class="flex justify-between items-start">
+
+                    <div>
+                        <p class="text-[10px] uppercase tracking-wider text-slate-500">
+                            Aceleración
+                        </p>
+
+                        <p id="metricAcceleration"
+                           class="metric-value text-3xl sm:text-4xl font-extrabold text-emerald-400 mt-2">
+                            0.00
+                        </p>
+
+                        <p class="text-[9px] text-slate-600 mt-1">
+                            m/s²
+                        </p>
+
+                    </div>
+
+                    <div class="w-9 h-9 rounded-xl bg-emerald-500/10
+                                flex items-center justify-center text-emerald-400">
+                        ●
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- =====================================================
+             MAIN GRID
+        ====================================================== -->
+
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
+
+
+            <!-- =================================================
+                 CONFIGURATION
+            ================================================== -->
+
+            <div class="glass rounded-3xl p-5 sm:p-6">
+
+                <div class="flex items-center justify-between mb-5">
+
+                    <div>
+                        <p class="text-[10px] uppercase tracking-wider text-blue-400">
+                            Configuración
+                        </p>
+
+                        <h3 class="text-lg font-bold text-white mt-1">
+                            Nueva sesión
+                        </h3>
+                    </div>
+
+                    <div class="text-xl">
+                        🎯
+                    </div>
+
+                </div>
+
+
+                <!-- EXERCISE -->
+
+                <label class="block text-[10px] uppercase tracking-wider text-slate-500 mb-2">
+                    Ejercicio
+                </label>
+
+                <select id="selectEjercicio"
+                        class="w-full bg-slate-950 border border-slate-800
+                               rounded-xl px-4 py-3 text-sm text-slate-200
+                               focus:outline-none focus:border-blue-500">
+
+                    <option value="curl_martillo">
+                        💪 Curl martillo
+                    </option>
+
+                    <option value="elevaciones_laterales">
+                        🏋️ Elevaciones laterales
+                    </option>
+
+                    <option value="remo">
+                        🔙 Remo
+                    </option>
+
+                    <option value="extension_pecho">
+                        🫀 Extensión de pecho
+                    </option>
+
+                    <option value="press_frances">
+                        💪 Press francés
+                    </option>
+
+                </select>
+
+
+                <!-- REPS -->
+
+                <div class="mt-5">
+
+                    <label class="block text-[10px] uppercase tracking-wider text-slate-500 mb-2">
+                        Repeticiones objetivo
+                    </label>
+
+                    <input id="inputReps"
+                           type="number"
+                           min="1"
+                           max="100"
+                           value="10"
+                           class="w-full bg-slate-950 border border-slate-800
+                                  rounded-xl px-4 py-3 text-sm
+                                  focus:outline-none focus:border-blue-500">
+
+                </div>
+
+
+                <!-- TIMING -->
+
+                <div class="grid grid-cols-2 gap-3 mt-5">
+
+                    <div>
+
+                        <label class="block text-[10px] uppercase tracking-wider text-slate-500 mb-2">
+                            Subida
+                        </label>
+
+                        <div class="relative">
+
+                            <input id="inputSubida"
+                                   type="number"
+                                   min=".1"
+                                   max="10"
+                                   step=".1"
+                                   value="1.0"
+                                   class="w-full bg-slate-950 border border-slate-800
+                                          rounded-xl px-3 py-3 pr-10 text-sm">
+
+                            <span class="absolute right-3 top-3 text-xs text-slate-600">
+                                s
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+                    <div>
+
+                        <label class="block text-[10px] uppercase tracking-wider text-slate-500 mb-2">
+                            Bajada
+                        </label>
+
+                        <div class="relative">
+
+                            <input id="inputBajada"
+                                   type="number"
+                                   min=".1"
+                                   max="10"
+                                   step=".1"
+                                   value="2.0"
+                                   class="w-full bg-slate-950 border border-slate-800
+                                          rounded-xl px-3 py-3 pr-10 text-sm">
+
+                            <span class="absolute right-3 top-3 text-xs text-slate-600">
+                                s
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- BUTTONS -->
+
+                <div class="mt-6 space-y-2">
+
+                    <button onclick="configurarSesion()"
+                            class="btn w-full py-3.5 rounded-xl
+                                   bg-blue-600 hover:bg-blue-500
+                                   text-white font-bold text-sm">
+
+                        Configurar sesión
+
+                    </button>
+
+                    <button onclick="calibrarInicio()"
+                            class="btn w-full py-3 rounded-xl
+                                   bg-slate-800 hover:bg-slate-700
+                                   text-slate-200 font-semibold text-xs">
+
+                        📍 Calibrar posición inicial
+
+                    </button>
+
+                    <button onclick="calibrarFinal()"
+                            class="btn w-full py-3 rounded-xl
+                                   bg-slate-800 hover:bg-slate-700
+                                   text-slate-200 font-semibold text-xs">
+
+                        📐 Calibrar posición final
+
+                    </button>
+
+                </div>
+
+
+                <!-- CONTROL SESSION -->
+
+                <div class="grid grid-cols-3 gap-2 mt-4">
+
+                    <button id="btnIniciar"
+                            onclick="iniciarRutina()"
+                            class="btn py-3 rounded-xl
+                                   bg-emerald-600 hover:bg-emerald-500
+                                   text-white font-bold text-xs">
+
+                        ▶ Iniciar
+
+                    </button>
+
+                    <button onclick="detenerRutina()"
+                            class="btn py-3 rounded-xl
+                                   bg-orange-500/15 hover:bg-orange-500/25
+                                   text-orange-400 font-bold text-xs">
+
+                        ■ Detener
+
+                    </button>
+
+                    <button onclick="reiniciarRutina()"
+                            class="btn py-3 rounded-xl
+                                   bg-red-500/10 hover:bg-red-500/20
+                                   text-red-400 font-bold text-xs">
+
+                        ↻ Reset
+
+                    </button>
+
+                </div>
+
+            </div>
+
+
+            <!-- =================================================
+                 GRAPH
+            ================================================== -->
+
+            <div class="xl:col-span-2 glass rounded-3xl p-5 sm:p-6">
+
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+
+                    <div>
+
+                        <p class="text-[10px] uppercase tracking-wider text-cyan-400">
+                            Telemetría en vivo
+                        </p>
+
+                        <h3 class="text-lg font-bold text-white mt-1">
+                            Movimiento de la mancuerna
+                        </h3>
+
+                    </div>
+
+                    <div class="flex items-center gap-2">
+
+                        <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+
+                        <span class="text-[10px] text-slate-500">
+                            Tiempo real
+                        </span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="h-[280px] sm:h-[350px]">
+
+                    <canvas id="chartMovimiento"></canvas>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- =====================================================
+             PERFORMANCE
+        ====================================================== -->
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-5">
+
+
+            <!-- CURRENT REP -->
+
+            <div class="glass rounded-3xl p-5">
+
+                <p class="text-[10px] uppercase tracking-wider text-slate-500">
+                    Repetición actual
+                </p>
+
+                <div class="flex items-end gap-2 mt-2">
+
+                    <span id="currentRep"
+                          class="text-5xl font-extrabold text-white">
+                        0
+                    </span>
+
+                    <span class="text-sm text-slate-500 mb-2">
+                        rep
+                    </span>
+
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 mt-5">
+
+                    <div class="bg-slate-950/60 rounded-xl p-3">
+
+                        <p class="text-[9px] uppercase text-slate-600">
+                            Subida
+                        </p>
+
+                        <p id="currentUp"
+                           class="text-xl font-bold text-blue-400 mt-1">
+                            0.00s
+                        </p>
+
+                    </div>
+
+                    <div class="bg-slate-950/60 rounded-xl p-3">
+
+                        <p class="text-[9px] uppercase text-slate-600">
+                            Bajada
+                        </p>
+
+                        <p id="currentDown"
+                           class="text-xl font-bold text-cyan-400 mt-1">
+                            0.00s
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- TECHNIQUE -->
+
+            <div class="glass rounded-3xl p-5">
+
+                <p class="text-[10px] uppercase tracking-wider text-slate-500">
+                    Calidad de ejecución
+                </p>
+
+                <div class="mt-3">
+
+                    <div id="techniqueCard"
+                         class="rounded-2xl border border-slate-800
+                                bg-slate-950/50 p-5">
+
+                        <div class="flex items-center justify-between">
+
+                            <div>
+
+                                <p class="text-xs text-slate-500">
+                                    Última repetición
+                                </p>
+
+                                <p id="techniqueText"
+                                   class="text-2xl font-extrabold text-slate-400 mt-1">
+                                    Esperando
+                                </p>
+
+                            </div>
+
+                            <div id="techniqueIcon"
+                                 class="text-3xl">
+                                —
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- COUNTERS -->
+
+            <div class="glass rounded-3xl p-5">
+
+                <p class="text-[10px] uppercase tracking-wider text-slate-500">
+                    Rendimiento
+                </p>
+
+                <div class="grid grid-cols-3 gap-2 mt-4">
+
+                    <div class="text-center bg-emerald-500/5 rounded-xl p-3">
+                        <p id="countCorrect"
+                           class="text-2xl font-extrabold text-emerald-400">
+                            0
+                        </p>
+                        <p class="text-[9px] uppercase text-slate-600 mt-1">
+                            Correctas
+                        </p>
+                    </div>
+
+                    <div class="text-center bg-orange-500/5 rounded-xl p-3">
+                        <p id="countFast"
+                           class="text-2xl font-extrabold text-orange-400">
+                            0
+                        </p>
+                        <p class="text-[9px] uppercase text-slate-600 mt-1">
+                            Rápidas
+                        </p>
+                    </div>
+
+                    <div class="text-center bg-purple-500/5 rounded-xl p-3">
+                        <p id="countSlow"
+                           class="text-2xl font-extrabold text-purple-400">
+                            0
+                        </p>
+                        <p class="text-[9px] uppercase text-slate-600 mt-1">
+                            Lentas
+                        </p>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- =====================================================
+             LAST EVENT
+        ====================================================== -->
+
+        <div class="glass rounded-3xl p-5 mt-5">
+
+            <div class="flex items-center justify-between">
+
+                <div>
+
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500">
+                        Actividad reciente
+                    </p>
+
+                    <p id="lastEventText"
+                       class="text-sm font-semibold text-slate-300 mt-1">
+                        Esperando datos del dispositivo...
+                    </p>
+
+                </div>
+
+                <div id="lastEventIcon"
+                     class="w-10 h-10 rounded-xl bg-slate-800
+                            flex items-center justify-center">
+                    —
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- =========================================================
+         HISTORIAL
+    ========================================================== -->
+
+    <section id="seccionHistorial" class="hidden">
+
+        <div class="glass rounded-3xl p-5 sm:p-6">
+
+            <div class="flex flex-col sm:flex-row sm:items-center
+                        sm:justify-between gap-4 mb-6">
+
+                <div>
+
+                    <p class="text-[10px] uppercase tracking-wider text-blue-400">
+                        Rendimiento
+                    </p>
+
+                    <h2 class="text-2xl font-extrabold text-white mt-1">
+                        Historial de entrenamiento
+                    </h2>
+
+                    <p class="text-xs text-slate-500 mt-1">
+                        Tus sesiones almacenadas en la base de datos.
+                    </p>
+
+                </div>
+
+                <button onclick="cargarHistorial()"
+                        class="btn px-4 py-2.5 rounded-xl
+                               bg-slate-800 hover:bg-slate-700
+                               text-xs font-semibold">
+
+                    ↻ Actualizar
+
+                </button>
+
+            </div>
+
+
+            <!-- SUMMARY -->
+
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+
+                <div class="bg-slate-950/50 rounded-2xl p-4">
+                    <p class="text-[9px] uppercase text-slate-600">
+                        Sesiones
+                    </p>
+                    <p id="historySessions"
+                       class="text-2xl font-extrabold text-white mt-1">
+                        0
+                    </p>
+                </div>
+
+                <div class="bg-slate-950/50 rounded-2xl p-4">
+                    <p class="text-[9px] uppercase text-slate-600">
+                        Reps correctas
+                    </p>
+                    <p id="historyCorrect"
+                       class="text-2xl font-extrabold text-emerald-400 mt-1">
+                        0
+                    </p>
+                </div>
+
+                <div class="bg-slate-950/50 rounded-2xl p-4">
+                    <p class="text-[9px] uppercase text-slate-600">
+                        Eficiencia promedio
+                    </p>
+                    <p id="historyEfficiency"
+                       class="text-2xl font-extrabold text-cyan-400 mt-1">
+                        0%
+                    </p>
+                </div>
+
+                <div class="bg-slate-950/50 rounded-2xl p-4">
+                    <p class="text-[9px] uppercase text-slate-600">
+                        Mejor sesión
+                    </p>
+                    <p id="historyBest"
+                       class="text-2xl font-extrabold text-purple-400 mt-1">
+                        0%
+                    </p>
+                </div>
+
+            </div>
+
+
+            <!-- TABLE -->
+
+            <div class="overflow-x-auto">
+
+                <table class="w-full text-left">
+
+                    <thead>
+
+                        <tr class="border-b border-slate-800">
+
+                            <th class="px-4 py-3 text-[10px] uppercase tracking-wider text-slate-600">
+                                Ejercicio
+                            </th>
+
+                            <th class="px-4 py-3 text-[10px] uppercase tracking-wider text-slate-600">
+                                Reps
+                            </th>
+
+                            <th class="px-4 py-3 text-[10px] uppercase tracking-wider text-slate-600">
+                                Correctas
+                            </th>
+
+                            <th class="px-4 py-3 text-[10px] uppercase tracking-wider text-slate-600">
+                                Rápidas
+                            </th>
+
+                            <th class="px-4 py-3 text-[10px] uppercase tracking-wider text-slate-600">
+                                Lentas
+                            </th>
+
+                            <th class="px-4 py-3 text-[10px] uppercase tracking-wider text-slate-600">
+                                Eficiencia
+                            </th>
+
+                        </tr>
+
+                    </thead>
+
+                    <tbody id="historyTable">
+
+                        <tr>
+                            <td colspan="6"
+                                class="text-center py-10 text-xs text-slate-600">
+                                Cargando historial...
+                            </td>
+                        </tr>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- =========================================================
+         DEVICE
+    ========================================================== -->
+
+    <section id="seccionDispositivo" class="hidden">
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+
+            <!-- DEVICE INFO -->
+
+            <div class="glass rounded-3xl p-6">
+
+                <p class="text-[10px] uppercase tracking-wider text-blue-400">
+                    Hardware
+                </p>
+
+                <h2 class="text-2xl font-extrabold text-white mt-1">
+                    Estado del dispositivo
+                </h2>
+
+                <div class="space-y-3 mt-6">
+
+                    <div class="flex justify-between items-center
+                                bg-slate-950/50 rounded-xl p-4">
+
+                        <span class="text-xs text-slate-500">
+                            Dispositivo
+                        </span>
+
+                        <span id="deviceInfoName"
+                              class="text-sm font-semibold">
+                            Mancuerna01
+                        </span>
+
+                    </div>
+
+                    <div class="flex justify-between items-center
+                                bg-slate-950/50 rounded-xl p-4">
+
+                        <span class="text-xs text-slate-500">
+                            Conexión
+                        </span>
+
+                        <span id="deviceInfoConnection"
+                              class="text-sm font-semibold text-red-400">
+                            Desconectado
+                        </span>
+
+                    </div>
+
+                    <div class="flex justify-between items-center
+                                bg-slate-950/50 rounded-xl p-4">
+
+                        <span class="text-xs text-slate-500">
+                            Ejercicio
+                        </span>
+
+                        <span id="deviceInfoExercise"
+                              class="text-sm font-semibold">
+                            Ninguno
+                        </span>
+
+                    </div>
+
+                    <div class="flex justify-between items-center
+                                bg-slate-950/50 rounded-xl p-4">
+
+                        <span class="text-xs text-slate-500">
+                            Estado
+                        </span>
+
+                        <span id="deviceInfoState"
+                              class="text-sm font-semibold">
+                            ESPERA
+                        </span>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- LIVE SENSOR -->
+
+            <div class="glass rounded-3xl p-6">
+
+                <p class="text-[10px] uppercase tracking-wider text-cyan-400">
+                    Sensores
+                </p>
+
+                <h2 class="text-2xl font-extrabold text-white mt-1">
+                    Lectura instantánea
+                </h2>
+
+                <div class="grid grid-cols-2 gap-3 mt-6">
+
+                    <div class="bg-slate-950/50 rounded-2xl p-4">
+                        <p class="text-[9px] uppercase text-slate-600">
+                            Ángulo
+                        </p>
+                        <p id="sensorAngle"
+                           class="text-2xl font-extrabold text-purple-400 mt-1">
+                            0°
+                        </p>
+                    </div>
+
+                    <div class="bg-slate-950/50 rounded-2xl p-4">
+                        <p class="text-[9px] uppercase text-slate-600">
+                            Aceleración
+                        </p>
+                        <p id="sensorAcceleration"
+                           class="text-2xl font-extrabold text-emerald-400 mt-1">
+                            0
+                        </p>
+                    </div>
+
+                    <div class="bg-slate-950/50 rounded-2xl p-4">
+                        <p class="text-[9px] uppercase text-slate-600">
+                            Velocidad angular
+                        </p>
+                        <p id="sensorVelocity"
+                           class="text-2xl font-extrabold text-cyan-400 mt-1">
+                            0
+                        </p>
+                    </div>
+
+                    <div class="bg-slate-950/50 rounded-2xl p-4">
+                        <p class="text-[9px] uppercase text-slate-600">
+                            Movimiento
+                        </p>
+                        <p id="sensorMovement"
+                           class="text-2xl font-extrabold text-slate-400 mt-1">
+                            NO
+                        </p>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+</div>
+
+
+<!-- =============================================================
+     MODAL RESUMEN
+============================================================== -->
+
+<div id="modalResumen"
+     class="fixed inset-0 z-50 hidden items-center justify-center
+            bg-black/70 backdrop-blur-md p-4">
+
+    <div class="modal glass rounded-3xl p-6 sm:p-8
+                w-full max-w-md">
+
+        <div class="text-center">
+
+            <div class="w-16 h-16 mx-auto rounded-2xl
+                        bg-emerald-500/10 border border-emerald-500/20
+                        flex items-center justify-center">
+
+                <span class="text-3xl">
+                    ✓
+                </span>
+
+            </div>
+
+            <p class="text-[10px] uppercase tracking-wider
+                      text-emerald-400 mt-5">
+                Sesión finalizada
+            </p>
+
+            <h2 class="text-2xl font-extrabold text-white mt-1">
+                ¡Buen trabajo!
+            </h2>
+
+            <p id="summaryExercise"
+               class="text-xs text-slate-500 mt-1">
+                —
+            </p>
+
+        </div>
+
+
+        <div class="mt-6 rounded-2xl bg-slate-950/70
+                    border border-slate-800 p-5 text-center">
+
+            <p class="text-[10px] uppercase tracking-wider text-slate-500">
+                Eficiencia
+            </p>
+
+            <p id="summaryEfficiency"
+               class="text-5xl font-extrabold text-cyan-400 mt-1">
+                0%
+            </p>
+
+        </div>
+
+
+        <div class="grid grid-cols-3 gap-2 mt-4">
+
+            <div class="rounded-xl bg-emerald-500/5 p-3 text-center">
+                <p id="summaryCorrect"
+                   class="text-xl font-extrabold text-emerald-400">
+                    0
+                </p>
+                <p class="text-[9px] text-slate-600 uppercase">
+                    Correctas
+                </p>
+            </div>
+
+            <div class="rounded-xl bg-orange-500/5 p-3 text-center">
+                <p id="summaryFast"
+                   class="text-xl font-extrabold text-orange-400">
+                    0
+                </p>
+                <p class="text-[9px] text-slate-600 uppercase">
+                    Rápidas
+                </p>
+            </div>
+
+            <div class="rounded-xl bg-purple-500/5 p-3 text-center">
+                <p id="summarySlow"
+                   class="text-xl font-extrabold text-purple-400">
+                    0
+                </p>
+                <p class="text-[9px] text-slate-600 uppercase">
+                    Lentas
+                </p>
+            </div>
+
+        </div>
+
+
+        <button onclick="cerrarModal()"
+                class="btn w-full mt-6 py-3.5 rounded-xl
+                       bg-blue-600 hover:bg-blue-500
+                       text-white font-bold text-sm">
+
+            Continuar
+
+        </button>
+
+    </div>
+
+</div>
+
+
+<!-- =============================================================
+     TOAST
+============================================================== -->
+
+<div id="toast"
+     class="fixed bottom-5 right-5 left-5 sm:left-auto
+            sm:w-96 hidden z-[100]">
+
+    <div id="toastBox"
+         class="glass rounded-2xl p-4">
+
+        <p id="toastTitle"
+           class="text-sm font-bold text-white">
+            Información
+        </p>
+
+        <p id="toastMessage"
+           class="text-xs text-slate-400 mt-1">
+            —
+        </p>
+
+    </div>
+
+</div>
+
+
+<script>
+
+/* ===============================================================
+   VARIABLES
+================================================================ */
+
+let ultimoResumen = null;
+let ultimoEvento = null;
+let datosActuales = {};
+
+let chartLabels = [];
+let chartAngles = [];
+let chartAcceleration = [];
+let chartVelocity = [];
+
+const MAX_POINTS = 50;
+
+
+/* ===============================================================
+   CHART
+================================================================ */
+
+const ctx = document
+    .getElementById('chartMovimiento')
+    .getContext('2d');
+
+const chart = new Chart(ctx, {
+
+    type: 'line',
+
+    data: {
+
+        labels: chartLabels,
+
+        datasets: [
+
+            {
+                label: 'Ángulo (°)',
+                data: chartAngles,
+                borderColor: '#8b5cf6',
+                backgroundColor: 'rgba(139,92,246,.08)',
+                borderWidth: 2.5,
+                pointRadius: 0,
+                tension: .35,
+                fill: true
+            },
+
+            {
+                label: 'Aceleración (m/s²)',
+                data: chartAcceleration,
+                borderColor: '#10b981',
+                borderWidth: 1.8,
+                pointRadius: 0,
+                tension: .35
+            },
+
+            {
+                label: 'Velocidad angular (°/s)',
+                data: chartVelocity,
+                borderColor: '#06b6d4',
+                borderWidth: 1.8,
+                pointRadius: 0,
+                tension: .35
+            }
+
+        ]
+
+    },
+
+    options: {
+
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+
+        interaction: {
+            intersect: false,
+            mode: 'index'
+        },
+
+        plugins: {
+
+            legend: {
+
+                labels: {
+                    color: '#94a3b8',
+                    font: {
+                        size: 10
+                    },
+                    usePointStyle: true
+                }
+
+            }
+
+        },
+
+        scales: {
+
+            x: {
+                display: false
+            },
+
+            y: {
+
+                grid: {
+                    color: 'rgba(148,163,184,.06)'
+                },
+
+                ticks: {
+                    color: '#64748b',
+                    font: {
+                        size: 9
+                    }
+                }
+
+            }
+
+        }
+
+    }
+
+});
+
+
+/* ===============================================================
+   UTILIDADES
+================================================================ */
+
+function numero(valor, decimales = 2) {
+
+    const n = Number(valor);
+
+    if (!Number.isFinite(n)) {
+        return 0;
+    }
+
+    return n.toFixed(decimales);
+
+}
+
+
+function nombreEjercicio(ejercicio) {
+
+    const nombres = {
+
+        "curl_martillo": "Curl martillo",
+        "elevaciones_laterales": "Elevaciones laterales",
+        "remo": "Remo",
+        "extension_pecho": "Extensión de pecho",
+        "press_frances": "Press francés",
+        "ninguno": "Sin ejercicio"
+
+    };
+
+    return nombres[ejercicio] || ejercicio || "Sin ejercicio";
+
+}
+
+
+function mostrarToast(titulo, mensaje, tipo = "normal") {
+
+    const toast = document.getElementById('toast');
+    const box = document.getElementById('toastBox');
+
+    document.getElementById('toastTitle').textContent = titulo;
+    document.getElementById('toastMessage').textContent = mensaje;
+
+    if (tipo === "error") {
+        box.className = "glass rounded-2xl p-4 border border-red-500/30";
+    }
+    else if (tipo === "success") {
+        box.className = "glass rounded-2xl p-4 border border-emerald-500/30";
+    }
+    else {
+        box.className = "glass rounded-2xl p-4";
+    }
+
+    toast.classList.remove('hidden');
+
+    setTimeout(() => {
+        toast.classList.add('hidden');
+    }, 3000);
+
+}
+
+
+/* ===============================================================
+   NAVIGATION
+================================================================ */
+
+function mostrarSeccion(seccion) {
+
+    const entrenamiento =
+        document.getElementById('seccionEntrenamiento');
+
+    const historial =
+        document.getElementById('seccionHistorial');
+
+    const dispositivo =
+        document.getElementById('seccionDispositivo');
+
+    entrenamiento.classList.add('hidden');
+    historial.classList.add('hidden');
+    dispositivo.classList.add('hidden');
+
+    document.getElementById('navEntrenamiento')
+        .classList.remove('nav-active');
+
+    document.getElementById('navHistorial')
+        .classList.remove('nav-active');
+
+    document.getElementById('navDispositivo')
+        .classList.remove('nav-active');
+
+
+    if (seccion === 'entrenamiento') {
+
+        entrenamiento.classList.remove('hidden');
+
+        document.getElementById('navEntrenamiento')
+            .classList.add('nav-active');
+
+    }
+
+    if (seccion === 'historial') {
+
+        historial.classList.remove('hidden');
+
+        document.getElementById('navHistorial')
+            .classList.add('nav-active');
+
+        cargarHistorial();
+
+    }
+
+    if (seccion === 'dispositivo') {
+
+        dispositivo.classList.remove('hidden');
+
+        document.getElementById('navDispositivo')
+            .classList.add('nav-active');
+
+    }
+
+}
+
+
+/* ===============================================================
+   CONNECTION
+================================================================ */
+
+function actualizarConexion(online) {
+
+    const badge =
+        document.getElementById('connectionBadge');
+
+    const dot =
+        document.getElementById('connectionDot');
+
+    const text =
+        document.getElementById('connectionText');
+
+    const info =
+        document.getElementById('deviceInfoConnection');
+
+
+    if (online) {
+
+        badge.className =
+            "flex items-center gap-2 px-4 py-2.5 rounded-full " +
+            "border border-emerald-500/20 bg-emerald-500/5";
+
+        dot.className =
+            "w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-online";
+
+        text.textContent = "CONECTADO";
+        text.className = "text-xs font-bold text-emerald-400";
+
+        info.textContent = "Conectado";
+        info.className = "text-sm font-semibold text-emerald-400";
+
+    }
+    else {
+
+        badge.className =
+            "flex items-center gap-2 px-4 py-2.5 rounded-full " +
+            "border border-red-500/20 bg-red-500/5";
+
+        dot.className =
+            "w-2.5 h-2.5 rounded-full bg-red-500";
+
+        text.textContent = "DESCONECTADO";
+        text.className = "text-xs font-bold text-red-400";
+
+        info.textContent = "Desconectado";
+        info.className = "text-sm font-semibold text-red-400";
+
+    }
+
+}
+
+
+/* ===============================================================
+   STATE
+================================================================ */
+
+function actualizarEstadoVisual(estado) {
+
+    const badge =
+        document.getElementById('stateBadge');
+
+    const colores = {
+
+        "ESPERA":
+            "bg-slate-800 text-slate-400",
+
+        "SUBIENDO":
+            "bg-blue-500/10 text-blue-400 border border-blue-500/20",
+
+        "ARRIBA":
+            "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
+
+        "BAJANDO":
+            "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
+
+    };
+
+    badge.className =
+        "state-badge px-3 py-1 rounded-full text-[10px] font-bold uppercase " +
+        (colores[estado] || colores.ESPERA);
+
+    badge.textContent = estado || "ESPERA";
+
+    document.getElementById('deviceInfoState').textContent =
+        estado || "ESPERA";
+
+}
+
+
+/* ===============================================================
+   TELEMETRY
+================================================================ */
+
+function actualizarTelemetria(data) {
+
+    if (!data) {
+        return;
+    }
+
+    datosActuales = data;
+
+
+    /* DEVICE */
+
+    if (data.dispositivo) {
+
+        document.getElementById('deviceName').textContent =
+            data.dispositivo;
+
+        document.getElementById('deviceInfoName').textContent =
+            data.dispositivo;
+
+    }
+
+
+    /* EXERCISE */
+
+    const ejercicio =
+        data.ejercicio || "ninguno";
+
+    document.getElementById('currentExercise').textContent =
+        nombreEjercicio(ejercicio);
+
+    document.getElementById('deviceInfoExercise').textContent =
+        nombreEjercicio(ejercicio);
+
+
+    /* REPS */
+
+    const reps =
+        Number(data.repeticiones || 0);
+
+    const objetivo =
+        Number(data.objetivo || 0);
+
+    document.getElementById('metricReps').textContent =
+        reps;
+
+    document.getElementById('currentRep').textContent =
+        reps;
+
+
+    document.getElementById('progressCurrent').textContent =
+        `${reps} repeticiones`;
+
+    document.getElementById('progressTarget').textContent =
+        `Meta: ${objetivo}`;
+
+
+    let porcentaje = 0;
+
+    if (objetivo > 0) {
+
+        porcentaje =
+            Math.min(100, (reps / objetivo) * 100);
+
+    }
+
+    document.getElementById('progressText').textContent =
+        `${Math.round(porcentaje)}%`;
+
+    document.getElementById('progressBar').style.width =
+        `${porcentaje}%`;
+
+
+    /* ANGLE */
+
+    const angulo =
+        Number(data.angulo || 0);
+
+    document.getElementById('metricAngle').textContent =
+        `${numero(angulo, 1)}°`;
+
+    document.getElementById('sensorAngle').textContent =
+        `${numero(angulo, 1)}°`;
+
+
+    /* VELOCITY */
+
+    const velocidad =
+        Number(data.velocidad_angular || 0);
+
+    document.getElementById('metricVelocity').textContent =
+        numero(velocidad, 2);
+
+    document.getElementById('sensorVelocity').textContent =
+        numero(velocidad, 2);
+
+
+    /* ACCELERATION */
+
+    const aceleracion =
+        Number(data.aceleracion || 0);
+
+    document.getElementById('metricAcceleration').textContent =
+        numero(aceleracion, 2);
+
+    document.getElementById('sensorAcceleration').textContent =
+        numero(aceleracion, 2);
+
+
+    /* MOVEMENT */
+
+    const movimiento =
+        Boolean(data.movimiento);
+
+    const movementElement =
+        document.getElementById('sensorMovement');
+
+    movementElement.textContent =
+        movimiento ? "SÍ" : "NO";
+
+    movementElement.className =
+        movimiento
+            ? "text-2xl font-extrabold text-emerald-400 mt-1"
+            : "text-2xl font-extrabold text-slate-500 mt-1";
+
+
+    /* STATE */
+
+    actualizarEstadoVisual(data.estado);
+
+
+    /* COUNTERS */
+
+    document.getElementById('countCorrect').textContent =
+        Number(data.correctas || 0);
+
+    document.getElementById('countFast').textContent =
+        Number(data.rapidas || 0);
+
+    document.getElementById('countSlow').textContent =
+        Number(data.lentas || 0);
+
+
+    /* TIMES */
+
+    document.getElementById('currentUp').textContent =
+        `${numero(data.subida || 0)}s`;
+
+    document.getElementById('currentDown').textContent =
+        `${numero(data.bajada || 0)}s`;
+
+
+    /* CHART */
+
+    const ahora =
+        new Date().toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+
+    chartLabels.push(ahora);
+    chartAngles.push(angulo);
+    chartAcceleration.push(aceleracion);
+    chartVelocity.push(velocidad);
+
+
+    if (chartLabels.length > MAX_POINTS) {
+
+        chartLabels.shift();
+        chartAngles.shift();
+        chartAcceleration.shift();
+        chartVelocity.shift();
+
+    }
+
+    chart.update('none');
+
+}
+
+
+/* ===============================================================
+   EVENTS
+================================================================ */
+
+function actualizarEvento(evento) {
+
+    if (!evento) {
+        return;
+    }
+
+    ultimoEvento = evento;
+
+    const tipo =
+        evento.tipo || "EVENTO";
+
+    let texto = "";
+    let icono = "•";
+
+    if (tipo === "CORRECTA") {
+
+        texto =
+            `Repetición ${evento.repeticion || ""} ejecutada correctamente`;
+
+        icono = "✓";
+
+    }
+    else if (tipo === "RAPIDA") {
+
+        texto =
+            `Repetición ${evento.repeticion || ""}: movimiento demasiado rápido`;
+
+        icono = "⚡";
+
+    }
+    else if (tipo === "LENTA") {
+
+        texto =
+            `Repetición ${evento.repeticion || ""}: movimiento demasiado lento`;
+
+        icono = "🐢";
+
+    }
+    else {
+
+        texto =
+            `Evento: ${tipo}`;
+
+    }
+
+
+    document.getElementById('lastEventText').textContent =
+        texto;
+
+    document.getElementById('lastEventIcon').textContent =
+        icono;
+
+
+    const technique =
+        document.getElementById('techniqueText');
+
+    const techniqueIcon =
+        document.getElementById('techniqueIcon');
+
+
+    technique.textContent =
+        tipo;
+
+    techniqueIcon.textContent =
+        icono;
+
+
+    if (tipo === "CORRECTA") {
+
+        technique.className =
+            "text-2xl font-extrabold text-emerald-400 mt-1";
+
+    }
+    else if (tipo === "RAPIDA") {
+
+        technique.className =
+            "text-2xl font-extrabold text-orange-400 mt-1";
+
+    }
+    else if (tipo === "LENTA") {
+
+        technique.className =
+            "text-2xl font-extrabold text-purple-400 mt-1";
+
+    }
+    else {
+
+        technique.className =
+            "text-2xl font-extrabold text-slate-400 mt-1";
+
+    }
+
+}
+
+
+/* ===============================================================
+   CONFIG
+================================================================ */
+
+async function configurarSesion() {
+
+    const ejercicio =
+        document.getElementById('selectEjercicio').value;
+
+    const repeticiones =
+        parseInt(document.getElementById('inputReps').value);
+
+    const tiempoSubida =
+        parseFloat(document.getElementById('inputSubida').value);
+
+    const tiempoBajada =
+        parseFloat(document.getElementById('inputBajada').value);
+
+
+    if (!repeticiones || repeticiones < 1) {
+
+        mostrarToast(
+            "Configuración",
+            "Introduce una cantidad válida de repeticiones.",
+            "error"
+        );
+
+        return;
+
+    }
+
+
+    try {
+
+        const respuesta =
+            await fetch('/api/configurar', {
+
+                method: 'POST',
+
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+
+                body: JSON.stringify({
+
+                    ejercicio,
+                    repeticiones,
+                    tiempo_subida: tiempoSubida,
+                    tiempo_bajada: tiempoBajada
+
+                })
+
+            });
+
+
+        const resultado =
+            await respuesta.json();
+
+
+        if (!respuesta.ok ||
+            resultado.status === "ERROR") {
+
+            throw new Error(
+                resultado.mensaje || "No se pudo configurar"
+            );
+
+        }
+
+
+        mostrarToast(
+            "Sesión configurada",
+            `${nombreEjercicio(ejercicio)} · ${repeticiones} repeticiones`,
+            "success"
+        );
+
+
+    }
+    catch(error) {
+
+        mostrarToast(
+            "Error",
+            error.message,
+            "error"
+        );
+
+    }
+
+}
+
+
+/* ===============================================================
+   COMMAND
+================================================================ */
+
+async function enviarComando(comando) {
+
+    try {
+
+        const respuesta =
+            await fetch('/api/comando', {
+
+                method: 'POST',
+
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+
+                body: JSON.stringify({
+                    comando
+                })
+
+            });
+
+
+        const resultado =
+            await respuesta.json();
+
+
+        if (!respuesta.ok ||
+            resultado.status === "ERROR") {
+
+            throw new Error(
+                resultado.mensaje || "No se pudo enviar el comando"
+            );
+
+        }
+
+
+        return true;
+
+    }
+    catch(error) {
+
+        mostrarToast(
+            "Error de comunicación",
+            error.message,
+            "error"
+        );
+
+        return false;
+
+    }
+
+}
+
+
+/* ===============================================================
+   SESSION CONTROLS
+================================================================ */
+
+async function iniciarRutina() {
+
+    if (!datosActuales ||
+        !datosActuales.dispositivo) {
+
+        mostrarToast(
+            "Dispositivo",
+            "Primero conecta la Mancuerna IoT.",
+            "error"
+        );
+
+        return;
+
+    }
+
+
+    const ok =
+        await enviarComando("INICIAR");
+
+    if (ok) {
+
+        document.getElementById('btnIniciar').textContent =
+            "● Activa";
+
+        mostrarToast(
+            "Entrenamiento iniciado",
+            "Realiza el ejercicio siguiendo el ritmo indicado.",
+            "success"
+        );
+
+    }
+
+}
+
+
+async function detenerRutina() {
+
+    const ok =
+        await enviarComando("DETENER");
+
+    if (ok) {
+
+        document.getElementById('btnIniciar').textContent =
+            "▶ Iniciar";
+
+        mostrarToast(
+            "Sesión detenida",
+            "El entrenamiento ha sido detenido."
+        );
+
+    }
+
+}
+
+
+async function reiniciarRutina() {
+
+    const ok =
+        await enviarComando("REINICIAR");
+
+    if (ok) {
+
+        document.getElementById('btnIniciar').textContent =
+            "▶ Iniciar";
+
+        mostrarToast(
+            "Sistema reiniciado",
+            "Las repeticiones de la sesión fueron reiniciadas.",
+            "success"
+        );
+
+    }
+
+}
+
+
+/* ===============================================================
+   CALIBRATION
+================================================================ */
+
+async function calibrarInicio() {
+
+    const ok =
+        await enviarComando("CALIBRAR_INICIO");
+
+    if (ok) {
+
+        mostrarToast(
+            "Calibración inicial",
+            "Se tomó la posición actual como posición inicial.",
+            "success"
+        );
+
+    }
+
+}
+
+
+async function calibrarFinal() {
+
+    const ok =
+        await enviarComando("CALIBRAR_FINAL");
+
+    if (ok) {
+
+        mostrarToast(
+            "Calibración final",
+            "Se tomó la posición actual como posición final.",
+            "success"
+        );
+
+    }
+
+}
+
+
+/* ===============================================================
+   SUMMARY
+================================================================ */
+
+function abrirResumen(resumen) {
+
+    if (!resumen) {
+        return;
+    }
+
+
+    const firma =
+        JSON.stringify(resumen);
+
+
+    if (firma === ultimoResumen) {
+        return;
+    }
+
+
+    ultimoResumen = firma;
+
+
+    document.getElementById('summaryExercise').textContent =
+        nombreEjercicio(resumen.ejercicio);
+
+
+    document.getElementById('summaryEfficiency').textContent =
+        `${numero(resumen.eficiencia || 0, 1)}%`;
+
+
+    document.getElementById('summaryCorrect').textContent =
+        Number(resumen.correctas || 0);
+
+
+    document.getElementById('summaryFast').textContent =
+        Number(resumen.rapidas || 0);
+
+
+    document.getElementById('summarySlow').textContent =
+        Number(resumen.lentas || 0);
+
+
+    document.getElementById('modalResumen')
+        .classList.remove('hidden');
+
+    document.getElementById('modalResumen')
+        .classList.add('flex');
+
+}
+
+
+function cerrarModal() {
+
+    document.getElementById('modalResumen')
+        .classList.add('hidden');
+
+    document.getElementById('modalResumen')
+        .classList.remove('flex');
+
+}
+
+
+/* ===============================================================
+   API STATE
+================================================================ */
+
+async function actualizarEstado() {
+
+    try {
+
+        const respuesta =
+            await fetch('/api/estado', {
+                cache: 'no-store'
+            });
+
+
+        if (!respuesta.ok) {
+            throw new Error("API no disponible");
+        }
+
+
+        const data =
+            await respuesta.json();
+
+
+        actualizarConexion(
+            Boolean(data.conectado)
+        );
+
+
+        if (data.datos) {
+
+            actualizarTelemetria(
+                data.datos
+            );
+
+        }
+
+
+        if (data.evento) {
+
+            const eventoFirma =
+                JSON.stringify(data.evento);
+
+            if (eventoFirma !== JSON.stringify(ultimoEvento)) {
+
+                actualizarEvento(
+                    data.evento
+                );
+
+            }
+
+        }
+
+
+        if (data.resumen) {
+
+            abrirResumen(
+                data.resumen
+            );
+
+        }
+
+    }
+    catch(error) {
+
+        actualizarConexion(false);
+
+    }
+
+}
+
+
+/* ===============================================================
+   HISTORY
+================================================================ */
+
+async function cargarHistorial() {
+
+    const tabla =
+        document.getElementById('historyTable');
+
+
+    tabla.innerHTML = `
+
+        <tr>
+
+            <td colspan="6"
+                class="text-center py-10 text-xs text-slate-600">
+
+                Cargando sesiones...
+
+            </td>
+
+        </tr>
+
+    `;
+
+
+    try {
+
+        const respuesta =
+            await fetch('/api/historial', {
+                cache: 'no-store'
+            });
+
+
+        if (!respuesta.ok) {
+            throw new Error("No se pudo obtener el historial");
+        }
+
+
+        const registros =
+            await respuesta.json();
+
+
+        if (!Array.isArray(registros) ||
+            registros.length === 0) {
+
+            tabla.innerHTML = `
+
+                <tr>
+
+                    <td colspan="6"
+                        class="text-center py-12 text-xs text-slate-600">
+
+                        Todavía no hay sesiones registradas.
+
+                    </td>
+
+                </tr>
+
+            `;
+
+            actualizarResumenHistorial([]);
+
+            return;
+
+        }
+
+
+        actualizarResumenHistorial(registros);
+
+
+        tabla.innerHTML =
+            registros.map(registro => {
+
+                const eficiencia =
+                    Number(registro.eficiencia || 0);
+
+
+                let color =
+                    "text-red-400";
+
+                if (eficiencia >= 80) {
+                    color = "text-emerald-400";
+                }
+                else if (eficiencia >= 60) {
+                    color = "text-orange-400";
+                }
+
+
+                return `
+
+                    <tr class="border-b border-slate-800/70 hover:bg-slate-800/20">
+
+                        <td class="px-4 py-4">
+
+                            <div class="font-semibold text-sm text-slate-200">
+
+                                ${nombreEjercicio(registro.ejercicio)}
+
+                            </div>
+
+                        </td>
+
+
+                        <td class="px-4 py-4 text-sm text-slate-400">
+
+                            ${registro.reps_totales ?? 0}
+
+                            /
+
+                            ${registro.reps_solicitadas ?? 0}
+
+                        </td>
+
+
+                        <td class="px-4 py-4">
+
+                            <span class="text-sm font-bold text-emerald-400">
+
+                                ${registro.reps_optimas ?? 0}
+
+                            </span>
+
+                        </td>
+
+
+                        <td class="px-4 py-4">
+
+                            <span class="text-sm text-orange-400">
+
+                                ${registro.reps_rapidas ?? 0}
+
+                            </span>
+
+                        </td>
+
+
+                        <td class="px-4 py-4">
+
+                            <span class="text-sm text-purple-400">
+
+                                ${registro.reps_lentas ?? 0}
+
+                            </span>
+
+                        </td>
+
+
+                        <td class="px-4 py-4">
+
+                            <span class="${color} font-extrabold">
+
+                                ${eficiencia.toFixed(1)}%
+
+                            </span>
+
+                        </td>
+
+                    </tr>
+
+                `;
+
+            }).join("");
+
+    }
+    catch(error) {
+
+        tabla.innerHTML = `
+
+            <tr>
+
+                <td colspan="6"
+                    class="text-center py-10 text-red-400 text-xs">
+
+                    Error al cargar el historial.
+
+                </td>
+
+            </tr>
+
+        `;
+
+    }
+
+}
+
+
+/* ===============================================================
+   HISTORY SUMMARY
+================================================================ */
+
+function actualizarResumenHistorial(registros) {
+
+    const sesiones =
+        registros.length;
+
+
+    let correctas = 0;
+    let eficienciaTotal = 0;
+    let mejor = 0;
+
+
+    registros.forEach(r => {
+
+        correctas +=
+            Number(r.reps_optimas || 0);
+
+        const eficiencia =
+            Number(r.eficiencia || 0);
+
+        eficienciaTotal +=
+            eficiencia;
+
+        if (eficiencia > mejor) {
+            mejor = eficiencia;
+        }
+
+    });
+
+
+    const promedio =
+        sesiones > 0
+            ? eficienciaTotal / sesiones
+            : 0;
+
+
+    document.getElementById('historySessions').textContent =
+        sesiones;
+
+    document.getElementById('historyCorrect').textContent =
+        correctas;
+
+    document.getElementById('historyEfficiency').textContent =
+        `${promedio.toFixed(1)}%`;
+
+    document.getElementById('historyBest').textContent =
+        `${mejor.toFixed(1)}%`;
+
+}
+
+
+/* ===============================================================
+   START
+================================================================ */
+
+document.addEventListener('DOMContentLoaded', () => {
+
+    actualizarEstado();
+
+    setInterval(
+        actualizarEstado,
+        1000
+    );
+
+    cargarHistorial();
+
+});
+
+</script>
+
+</body>
+</html>

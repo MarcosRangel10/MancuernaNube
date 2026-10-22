@@ -1,4 +1,0 @@
-Flask
-paho-mqtt
-mysql-connector-python
-gunicorn

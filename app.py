@@ -414,5 +414,7 @@ def api_historial():
         return jsonify([])
 
 if __name__ == '__main__':
+    from waitress import serve
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    print(f">>> Servidor iniciado con Waitress en el puerto {port}")
+    serve(app, host='0.0.0.0', port=port)

@@ -260,6 +260,9 @@ def al_recibir(client, userdata, msg):
     try:
         payload = json.loads(msg.payload.decode())
         
+        # LOG DE DEPURACIÓN EN SERVIDOR
+        print(f">>> LLEGÓ MENSAJE MQTT EN RENDER: {payload}")
+        
         # Actualización de presencia activa
         estado_mancuerna["conectado"] = True
         ultima_recepcion_mqtt = time.time()
@@ -290,7 +293,7 @@ def al_recibir(client, userdata, msg):
                     pass
                 ultimo_guardado_db = ahora
     except Exception as e:
-        print("Error al procesar MQTT:", e)
+        print(">>> Error al procesar MQTT:", e)
 
 def iniciar_mqtt():
     client = mqtt.Client(client_id=f"RenderFlask_{int(time.time())}")
@@ -318,6 +321,8 @@ def index():
 
 @app.route('/api/estado', methods=['GET'])
 def api_estado():
+    # LOG DE DEPURACIÓN DE MEMORIA INTERNA
+    print(f">>> LECTURA API: Conectado={estado_mancuerna['conectado']} | Ángulo={estado_mancuerna['datos']['angulo']}")
     return jsonify(estado_mancuerna)
 
 @app.route('/api/configurar', methods=['POST'])

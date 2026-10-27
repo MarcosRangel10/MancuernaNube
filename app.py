@@ -9,7 +9,7 @@ import mysql.connector
 
 app = Flask(__name__)
 
-# Lock para seguridad en concurrencia de hilos
+# Mutex para concurrencia segura entre hilos (MQTT y Flask)
 estado_lock = threading.Lock()
 
 # =====================================================
@@ -18,11 +18,8 @@ estado_lock = threading.Lock()
 MQTT_BROKER = os.getenv("MQTT_BROKER", "d3befa5909cf4595a75259012d836398.s1.eu.hivemq.cloud")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "8883"))
 
-# Tópicos principales
-MQTT_TOPIC_DATOS = "mancuerna/+/datos"
-MQTT_TOPIC_EVENTOS = "mancuerna/+/eventos"
-MQTT_TOPIC_RESUMEN = "mancuerna/+/resumen"
-MQTT_TOPIC_STATUS = "mancuerna/+/status"
+# Tópicos amplios para capturar todo el wildcard del dispositivo
+MQTT_TOPIC_SUBSCRIPTION = "mancuerna/#"
 
 MQTT_USER = os.getenv("MQTT_USER", "mancuerna_esp32")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "12345678")
@@ -36,11 +33,11 @@ DB_USER = os.getenv("MYSQLUSER", "root")
 DB_PASSWORD = os.getenv("MYSQLPASSWORD", "12345678")
 DB_NAME = os.getenv("MYSQLDATABASE", "mancuerna_db")
 
-# Referencia global al cliente MQTT para publicación bidireccional
+# Referencia global del cliente MQTT para enviar comandos al ESP32
 mqtt_client_global = None
 
 # =====================================================
-# ESTADO GLOBAL DEL SISTEMA
+# ESTADO GLOBAL DE LA MANCUERNA Y TELEMETRÍA
 # =====================================================
 estado_mancuerna = {
     "conectado": False,
@@ -66,7 +63,7 @@ estado_mancuerna = {
         "aceleracion_dinamica": 0.0,
         "velocidad_angular": 0.0,
         "giro_eje": 0.0,
-        "bateria_pct": 100,  # Soporte para nivel de batería
+        "bateria_pct": 100,
         "voltaje_bateria": 4.20
     },
     "evento": None,
@@ -77,7 +74,7 @@ ultima_recepcion_mqtt = 0.0
 ultimo_guardado_db = 0.0
 
 def conectar_mysql():
-    """Conexión compatible con Aiven SSL y MySQL Local"""
+    """Conexión robusta compatible con Aiven SSL y MySQL Local"""
     try:
         config = {
             "host": DB_HOST,
@@ -95,7 +92,7 @@ def conectar_mysql():
         return None
 
 # =====================================================
-# WATCHDOG DE CONEXIÓN FÍSICA
+# WATCHDOG DE CONEXIÓN FÍSICA (MONITOR DE SEÑAL)
 # =====================================================
 def verificar_conexion_esp32():
     global estado_mancuerna, ultima_recepcion_mqtt
@@ -105,21 +102,21 @@ def verificar_conexion_esp32():
             if estado_mancuerna["conectado"]:
                 if time.time() - ultima_recepcion_mqtt > 5.0:
                     estado_mancuerna["conectado"] = False
-                    print(">>> ALERTA: ESP32 Desconectado (Sin señal por más de 5s)")
+                    print(">>> ALERTA: ESP32 Desconectado (Sin paquetes MQTT por más de 5s)")
 
 threading.Thread(target=verificar_conexion_esp32, daemon=True).start()
 
 # =====================================================
-# GESTIÓN MQTT (CLIENTE Y CALLBACKS)
+# GESTIÓN Y PROCESAMIENTO MQTT BIDIRECCIONAL
 # =====================================================
 def al_conectar(client, userdata, flags, rc):
     if rc == 0:
         print("========================================")
         print("   MANCUERNA IoT CONECTADO A HIVEMQ")
         print("========================================")
-        client.subscribe("mancuerna/#")
+        client.subscribe(MQTT_TOPIC_SUBSCRIPTION)
     else:
-        print(f">>> Error conexión MQTT. Código: {rc}")
+        print(f">>> Error conexión MQTT. Código de retorno: {rc}")
 
 def al_recibir(client, userdata, msg):
     global estado_mancuerna, ultima_recepcion_mqtt, ultimo_guardado_db
@@ -128,7 +125,7 @@ def al_recibir(client, userdata, msg):
     payload_str = msg.payload.decode('utf-8', errors='ignore')
     
     try:
-        # Manejo de status en texto plano o JSON
+        # Control de estado de conexión online/offline directo del ESP32
         if "status" in topic:
             with estado_lock:
                 if payload_str == "ONLINE":
@@ -144,27 +141,29 @@ def al_recibir(client, userdata, msg):
             estado_mancuerna["conectado"] = True
             ultima_recepcion_mqtt = time.time()
 
+            # 1. Recepción de datos continuos de telemetría del ESP32
             if "datos" in topic:
-                # Sincronización directa con la telemetría oficial del ESP32
                 estado_mancuerna["datos"].update(payload)
                 
-                # Persistencia periódica en base de datos (cada 2s máximo)
+                # Guardado optimizado en base de datos (filtro de tiempo para no saturar)
                 ahora = time.time()
                 if ahora - ultimo_guardado_db >= 2.0:
                     guardar_telemetria_db(payload)
                     ultimo_guardado_db = ahora
 
+            # 2. Recepción de eventos individuales por repetición (Correcta, Rápida, Lenta, Brusca)
             elif "eventos" in topic:
                 estado_mancuerna["evento"] = payload
-                print(f">>> EVENTO ESP32: {payload.get('tipo')} | Rep: {payload.get('repeticion')}")
+                print(f">>> EVENTO BIOMECÁNICO [ESP32]: Tipo={payload.get('tipo')} | Rep={payload.get('repeticion')}")
 
+            # 3. Recepción del reporte de resumen al terminar la serie o rutina
             elif "resumen" in topic:
                 estado_mancuerna["resumen"] = payload
-                print(">>> RESUMEN RECIBIDO DE FIN DE RUTINA")
+                print(">>> RESUMEN FINAL RECIBIDO DESDE EL ESP32")
                 guardar_resumen_db(payload)
 
     except Exception as e:
-        print(f">>> Error procesando mensaje MQTT en tópico {topic}: {e}")
+        print(f">>> Error procesando mensaje MQTT en tópico [{topic}]: {e}")
 
 def guardar_telemetria_db(d):
     conn = conectar_mysql()
@@ -208,7 +207,7 @@ def guardar_resumen_db(res):
                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"""
             cursor.execute(sql, (
                 d.get("dispositivo", "Mancuerna01"),
-                res.get("ejercicio", "curl_martillo"),
+                res.get("ejercicio", d.get("ejercicio", "curl_martillo")),
                 res.get("solicitadas", d.get("objetivo", 10)),
                 res.get("realizadas", d.get("repeticiones", 0)),
                 res.get("correctas", d.get("correctas", 0)),
@@ -219,7 +218,7 @@ def guardar_resumen_db(res):
             conn.commit()
             cursor.close()
             conn.close()
-            print(">>> ÉXITO: Sesión almacenada en historial de MySQL")
+            print(">>> ÉXITO: Sesión registrada correctamente en MySQL Cloud")
         except Exception as e:
             print(">>> Error al guardar historial en MySQL:", e)
 
@@ -260,12 +259,12 @@ def api_configurar():
     data = request.get_json(force=True) or {}
     dispositivo = estado_mancuerna["datos"].get("dispositivo", "Mancuerna01")
     
-    # Publicar configuración vía MQTT al ESP32 para sincronización total
+    # CRUCIAL: Publicar la configuración directamente al ESP32 por MQTT
     if mqtt_client_global and mqtt_client_global.is_connected():
-        topic_cfg = f"mancuerna/{dispositivo}/config"
-        mqtt_client_global.publish(topic_cfg, json.dumps(data))
-        print(f">>> CONFIGURACIÓN ENVIADA A MQTT [{topic_cfg}]: {data}")
-    
+        topic_config = f"mancuerna/{dispositivo}/config"
+        mqtt_client_global.publish(topic_config, json.dumps(data))
+        print(f">>> CONFIGURACIÓN ENVIADA AL ESP32 [{topic_config}]: {data}")
+
     with estado_lock:
         d = estado_mancuerna["datos"]
         d["ejercicio"] = data.get("ejercicio", d["ejercicio"])
@@ -279,7 +278,7 @@ def api_configurar():
         estado_mancuerna["resumen"] = None
         estado_mancuerna["evento"] = None
 
-    return jsonify({"status": "OK", "mensaje": "Configuración enviada al dispositivo"}), 200
+    return jsonify({"status": "OK", "mensaje": "Configuración sincronizada con el dispositivo"}), 200
 
 @app.route('/api/comando', methods=['POST'])
 def api_comando():
@@ -287,12 +286,12 @@ def api_comando():
     cmd = data.get("comando", "").upper()
     dispositivo = estado_mancuerna["datos"].get("dispositivo", "Mancuerna01")
     
-    # Publicar comando vía MQTT al ESP32
+    # CRUCIAL: Enviar el comando de control (INICIAR, DETENER, REINICIAR, CALIBRAR) al ESP32
     if mqtt_client_global and mqtt_client_global.is_connected():
-        topic_cmd = f"mancuerna/{dispositivo}/comando"
+        topic_comando = f"mancuerna/{dispositivo}/comando"
         payload_cmd = json.dumps({"comando": cmd})
-        mqtt_client_global.publish(topic_cmd, payload_cmd)
-        print(f">>> COMANDO ENVIADO A MQTT [{topic_cmd}]: {cmd}")
+        mqtt_client_global.publish(topic_comando, payload_cmd)
+        print(f">>> COMANDO ENVIADO AL ESP32 [{topic_comando}]: {cmd}")
 
     with estado_lock:
         d = estado_mancuerna["datos"]
@@ -304,14 +303,18 @@ def api_comando():
             estado_mancuerna["resumen"] = None
             estado_mancuerna["evento"] = None
         elif cmd == "DETENER":
+            # Generar resumen local por seguridad si se detiene abruptamente
+            totales = d.get("repeticiones", 0)
+            optimas = d.get("correctas", 0)
+            eficiencia = round((optimas / max(1, totales)) * 100, 1)
             estado_mancuerna["resumen"] = {
                 "ejercicio": d.get("ejercicio"),
                 "solicitadas": d.get("objetivo"),
-                "realizadas": d.get("repeticiones"),
-                "correctas": d.get("correctas"),
-                "rapidas": d.get("rapidas"),
-                "lentas": d.get("lentas"),
-                "eficiencia": round((d.get("correctas", 0) / max(1, d.get("repeticiones", 1))) * 100, 1)
+                "realizadas": totales,
+                "correctas": optimas,
+                "rapidas": d.get("rapidas", 0),
+                "lentas": d.get("lentas", 0),
+                "eficiencia": eficiencia
             }
 
     return jsonify({"status": "OK", "comando": cmd}), 200
@@ -335,7 +338,7 @@ def api_historial():
         conn.close()
         return jsonify(filas)
     except Exception as e:
-        print(">>> Error al consultar historial:", e)
+        print(">>> Error al consultar historial en base de datos:", e)
         return jsonify([])
 
 if __name__ == '__main__':

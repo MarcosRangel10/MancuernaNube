@@ -260,20 +260,21 @@ def al_recibir(client, userdata, msg):
     try:
         payload = json.loads(msg.payload.decode())
         
-        # LOG DE DEPURACIÓN EN SERVIDOR
-        print(f">>> LLEGÓ MENSAJE MQTT EN RENDER: {payload}")
+        print(f">>> LLEGÓ MENSAJE MQTT: {payload}")
         
-        # Actualización de presencia activa
+        # Actualización de presencia activa de la mancuerna
         estado_mancuerna["conectado"] = True
         ultima_recepcion_mqtt = time.time()
         
+        # 1. Procesar la lectura biomecánica de forma independiente
         procesar_lectura_mancuerna(payload)
 
+        # 2. Intento de guardado en base de datos protegido contra fallos
         ahora = time.time()
         if rutina_config["activa"] and (ahora - ultimo_guardado_db >= 1.0):
-            conn = conectar_mysql()
-            if conn:
-                try:
+            try:
+                conn = conectar_mysql()
+                if conn:
                     cursor = conn.cursor()
                     d = estado_mancuerna["datos"]
                     sql = """INSERT INTO datos_mancuerna 
@@ -289,9 +290,12 @@ def al_recibir(client, userdata, msg):
                     conn.commit()
                     cursor.close()
                     conn.close()
-                except Exception as e:
-                    pass
-                ultimo_guardado_db = ahora
+            except Exception as db_err:
+                # Si la base de datos falla, solo se imprime en consola pero NO detiene el conteo
+                print(">>> Advertencia: No se pudo guardar en MySQL (continuando normal):", db_err)
+                
+            ultimo_guardado_db = ahora
+            
     except Exception as e:
         print(">>> Error al procesar MQTT:", e)
 

@@ -254,7 +254,46 @@ def al_conectar(client, userdata, flags, rc):
         client.subscribe(MQTT_TOPIC)
     else:
         print(f">>> Error conexión MQTT. Código: {rc}")
-
+def guardar_en_segundo_plano(d, es_resumen=False, res_data=None):
+    """Guarda en MySQL en un hilo separado para no congelar jamás el MQTT ni el conteo"""
+    try:
+        conn = conectar_mysql()
+        if conn:
+            cursor = conn.cursor()
+            if not es_resumen:
+                sql = """INSERT INTO datos_mancuerna 
+                         (dispositivo, ejercicio, angulo, movimiento, repeticiones, objetivo, 
+                          correctas, rapidas, lentas, estado, subida, bajada, aceleracion, velocidad_angular) 
+                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+                cursor.execute(sql, (
+                    d.get("dispositivo", "Mancuerna01"), d.get("ejercicio", "curl_martillo"),
+                    d.get("angulo", 0.0), d.get("movimiento", False),
+                    d.get("repeticiones", 0), d.get("objetivo", 10),
+                    d.get("correctas", 0), d.get("rapidas", 0),
+                    d.get("lentas", 0), d.get("estado", "ESPERA"),
+                    d.get("subida", 0.0), d.get("bajada", 0.0),
+                    d.get("aceleracion", 0.0), d.get("velocidad_angular", 0.0)
+                ))
+            else:
+                sql = """INSERT INTO historial_sesiones 
+                         (dispositivo, ejercicio, reps_solicitadas, reps_totales, reps_optimas, reps_rapidas, reps_lentas, eficiencia) 
+                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"""
+                cursor.execute(sql, (
+                    d.get("dispositivo", "Mancuerna01"),
+                    res_data.get("ejercicio", d.get("ejercicio", "curl_martillo")),
+                    res_data.get("solicitadas", d.get("objetivo", 10)),
+                    res_data.get("realizadas", d.get("repeticiones", 0)),
+                    res_data.get("correctas", d.get("correctas", 0)),
+                    res_data.get("rapidas", d.get("rapidas", 0)),
+                    res_data.get("lentas", d.get("lentas", 0)),
+                    res_data.get("eficiencia", 0.0)
+                ))
+            conn.commit()
+            cursor.close()
+            conn.close()
+    except Exception as e:
+        print(">>> Error silencioso en DB (no afecta al conteo):", e)
+        
 def al_recibir(client, userdata, msg):
     global estado_mancuerna, ultimo_guardado_db, ultima_recepcion_mqtt
     try:
@@ -271,29 +310,13 @@ def al_recibir(client, userdata, msg):
 
         # 2. Intento de guardado en base de datos protegido contra fallos
         ahora = time.time()
+      # Dentro de al_recibir, cuando lleguen datos:
+        ahora = time.time()
         if rutina_config["activa"] and (ahora - ultimo_guardado_db >= 1.0):
-            try:
-                conn = conectar_mysql()
-                if conn:
-                    cursor = conn.cursor()
-                    d = estado_mancuerna["datos"]
-                    sql = """INSERT INTO datos_mancuerna 
-                             (dispositivo, ejercicio, angulo, movimiento, repeticiones, objetivo, 
-                              correctas, rapidas, lentas, estado, subida, bajada, aceleracion, velocidad_angular) 
-                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
-                    cursor.execute(sql, (
-                        d["dispositivo"], d["ejercicio"], d["angulo"], d["movimiento"],
-                        d["repeticiones"], d["objetivo"], d["correctas"], d["rapidas"],
-                        d["lentas"], d["estado"], d["subida"], d["bajada"],
-                        d["aceleracion"], d["velocidad_angular"]
-                    ))
-                    conn.commit()
-                    cursor.close()
-                    conn.close()
-            except Exception as db_err:
-                # Si la base de datos falla, solo se imprime en consola pero NO detiene el conteo
-                print(">>> Advertencia: No se pudo guardar en MySQL (continuando normal):", db_err)
-                
+            d_copia = dict(estado_mancuerna["datos"])
+            # Lanzamos el guardado en un hilo aparte para que la DB nunca bloquee el flujo
+            threading.Thread(target=guardar_en_segundo_plano, args=(d_copia, False), daemon=True).start()
+            ultimo_guardado_db = ahora
             ultimo_guardado_db = ahora
             
     except Exception as e:
